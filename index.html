@@ -1,0 +1,157 @@
+<html>
+  <head>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js" integrity="sha512-xRllwz2gdZciIB+AkEbeq+gVhX8VB8XsfqeFbUh+SzHlN96dEduwtTuVuc2u9EROlmW9+yhRlxjif66ORpsgVA==" crossorigin="anonymous"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.css" integrity="sha512-TU/clvRaSqKB43MX6dvJPEWV8tEGDTbmT4mdxTs6DSYsBY9zKmiw4Qeykp0nS10ndH14HRNG2VWN+IjiMfA17Q==" crossorigin="anonymous" />
+<!--  Including the chessboardjs files:-->
+<!--  Including jQuery, another tool chessboardjs uses:-->
+    <script src="https://code.jquery.com/jquery-1.12.4.min.js"></script>
+
+    <script src="./js/chessboard-1.0.0.js"></script>
+    <link rel="stylesheet" href="css/chessboard-1.0.0.min.css">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+
+  </head>
+  <body>
+    <div style="display: flex">
+      <div id="board" style="width:400px;"></div>
+      <div>
+        <h5>Hints</h5>
+        <ul>
+          <li>For pawn moves just say the square you want the pawn to move to. e.g. to move e pawn to e4, just say 'e4'</li>
+          <li>To undo a move, just say 'undo'</li>
+          <li>For pawn captures, say 'e takes d4'. For captures with one of your pieces, say 'knight takes e2'</li>
+          <li>To reset the board, say 'reset'</li>
+          <li>To castle short say 'castle short', to castle long say 'castle long'</li>
+        </ul>
+        <button onclick="reactivateMic()">Reactivate microphone</button>
+      </div>
+    </div>
+
+    <script>
+      let chess = new Chess();
+      let board;
+      function onMoveEnd(oldPos, newPos) {
+        // seems like you have to do this in order for pawn to be removed from board after en passant capture
+        board.position(chess.fen());
+      }
+      board = new Chessboard('board', {position: 'start', onMoveEnd, draggable: true});
+      console.log(chess.ascii());
+
+      function getChessMoveFromTranscript(transcript) {
+        const splitTranscript = transcript.trim().toLowerCase().split(' ');
+        if (splitTranscript[0] === 'undo') {
+          const move = chess.undo();
+          board.move(`${move.to}-${move.from}`);
+          return;
+        }
+        if (splitTranscript[0] === 'reset') {
+          board.start();
+          chess = new Chess();
+          return;
+        }
+        if (splitTranscript[0].startsWith('castle')) {
+          if (splitTranscript[1] === 'short') {
+            return 'O-O';
+          } else if (splitTranscript[1] === 'long'){
+            return 'O-O-O';
+          }
+        }
+        if (splitTranscript.length > 1) {
+          let piece = '';
+          let square = '';
+          let takes = '';
+          const rawPieceText = splitTranscript[0];
+          const isRook = text => text.includes('rook') || text.includes('rocky') || text.includes('rookie');
+          const isKnight = text => (text[0] === 'k' || text[0] === 'n') && text[text.length - 1] === 't';
+          if (isRook(rawPieceText)) {
+            piece = 'R';
+          } else if (isKnight(rawPieceText)) {
+            piece = 'N';
+          } else if (rawPieceText === 'bishop') {
+            piece = 'B';
+          } else if (rawPieceText === 'queen'){
+            piece = 'Q';
+          } else if (rawPieceText === 'king') {
+            piece = 'K';
+          } else {
+            if (rawPieceText === 'he') {
+              piece = 'e';
+            } else {
+              piece = rawPieceText;
+            }
+          }
+
+          if (splitTranscript.length === 3) {
+            if (splitTranscript[1] === 'takes') {
+              takes = 'x';
+            }
+            square = splitTranscript[2];
+          } else {
+            square = splitTranscript[1];
+          }
+          const move = `${piece}${takes}${square}`;
+          console.log('MOVE:', move);
+          return move;
+        } else {
+          return transcript.trim().toLowerCase();
+        }
+      }
+      var SpeechRecognition = SpeechRecognition || webkitSpeechRecognition
+      var SpeechGrammarList = SpeechGrammarList || webkitSpeechGrammarList
+      var SpeechRecognitionEvent = SpeechRecognitionEvent || webkitSpeechRecognitionEvent
+
+      const pieces = ['pawn', 'rook', 'ruck', 'knight', 'bishop', 'queen', 'king'];
+      var grammar = '#JSGF V1.0; grammar pieces; public <piece> = ' + pieces.join(' | ') + ' ;'
+
+      var recognition = new SpeechRecognition();
+      var speechRecognitionList = new SpeechGrammarList();
+      speechRecognitionList.addFromString(grammar, 1);
+      recognition.grammars = speechRecognitionList;
+      recognition.continuous = true;
+      recognition.lang = 'en-US';
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 5;
+
+
+      document.addEventListener("DOMContentLoaded", function(){
+        // Handler when the DOM is fully loaded
+        recognition.start();
+      });
+
+
+      recognition.onresult = function(event) {
+        var result = event.results[event.results.length - 1][0].transcript;
+        const mostConfident = [...event.results[event.results.length - 1]].sort((a, b) => b.confidence - a.confidence)[0];
+        const suggestions = [...event.results[event.results.length - 1]].sort((a, b) => b.confidence - a.confidence).map(x => x.transcript);
+        console.log(suggestions);
+        const movesFromSuggestions = suggestions.map(x => getChessMoveFromTranscript(x));
+        for (let i = 0; i < movesFromSuggestions.length; i += 1) {
+          const validMove = chess.moves().find(x => x === movesFromSuggestions[i]);
+          if (validMove) {
+            const move = chess.move(validMove);
+            board.move(`${move.from}-${move.to}`);
+            break;
+          }
+        }
+
+        // diagnostic.textContent = 'Most confident: ' + mostConfident.transcript;
+        console.log(chess.ascii());
+      }
+      recognition.onspeechend = function() {
+        // recognition.stop();
+        recognition.start();
+        console.log('speech end');
+      }
+      recognition.onnomatch = function(event) {
+        diagnostic.textContent = 'I didnt recognise that .';
+      }
+      recognition.onerror = function(event) {
+        diagnostic.textContent = 'Error occurred in recognition: ' + event.error;
+      }
+      function reactivateMic() {
+        recognition.start();
+      }
+    </script>
+  </body>
+</html>
